@@ -33,6 +33,7 @@ Example invocations:
 - List exposed resources: `rails-mcp-server ... list-resources`
 - Display schema metadata: `rails-mcp-server ... read-resource --uri schema://database`
 - View available tools: `rails-mcp-server ... list-tools`
+- Search schema tables/columns: `rails-mcp-server ... search-schema --keyword sleep`
 - Fetch rows (filters as JSON):
   ```bash
   rails-mcp-server \
@@ -67,7 +68,7 @@ rails-mcp-server \
 In Claude Desktop, add a custom connector that runs the same command (the executable
 is your Python interpreter, the arguments are the `-m rails_mcp_server.server ... serve`
 pieces). Once added, you can ask Claude natural questions (“Find user with email …”) and
-it will invoke the `fetch_records` tool over MCP.
+it will invoke the `fetch_records` and `search_schema` tools over MCP.
 
 ## Testing
 Run the full suite once dependencies are installed:

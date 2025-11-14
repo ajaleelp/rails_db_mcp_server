@@ -42,6 +42,15 @@ FETCH_RECORDS_INPUT_SCHEMA = {
     "required": ["table_name"],
 }
 
+SEARCH_SCHEMA_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "keyword": {"type": "string"},
+        "limit": {"type": "integer", "default": 10, "minimum": 1, "maximum": 100},
+    },
+    "required": ["keyword"],
+}
+
 
 @dataclass
 class AppComponents:
@@ -80,7 +89,12 @@ class RailsMCPServer:
                 "name": "fetch_records",
                 "description": "Fetch records using indexed columns only",
                 "input_schema": FETCH_RECORDS_INPUT_SCHEMA,
-            }
+            },
+            {
+                "name": "search_schema",
+                "description": "Search schema tables/columns by keyword",
+                "input_schema": SEARCH_SCHEMA_INPUT_SCHEMA,
+            },
         ]
 
     def fetch_records(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -95,6 +109,40 @@ class RailsMCPServer:
         rows = self.components.executor.execute(query, params)
         masked = self.components.masker.mask(rows, validated.table_name)
         return {"records": masked, "count": len(masked)}
+
+    def search_schema(self, keyword: str, limit: int = 10) -> Dict[str, Any]:
+        keyword_lc = keyword.lower().strip()
+        if not keyword_lc:
+            raise ValidationError("invalid_keyword", "Keyword must not be empty")
+        if limit <= 0:
+            raise ValidationError("invalid_limit", "Limit must be greater than zero")
+        if limit > 100:
+            raise ValidationError("invalid_limit", "Limit cannot exceed 100")
+
+        tables = self.components.schema_parser.tables
+        matches: list[Dict[str, Any]] = []
+        for table_name, metadata in tables.items():
+            table_hit = keyword_lc in table_name.lower()
+            matching_columns = [
+                column for column in metadata["columns"] if keyword_lc in column.lower()
+            ]
+            if not table_hit and not matching_columns:
+                continue
+            matches.append(
+                {
+                    "table_name": table_name,
+                    "matching_columns": matching_columns,
+                    "all_columns": metadata["columns"],
+                    "indexes": metadata["indexes"],
+                    "primary_key": metadata["primary_key"],
+                }
+            )
+
+        return {
+            "keyword": keyword,
+            "match_count": len(matches),
+            "matches": matches[:limit],
+        }
 
 
 @click.group(context_settings={"auto_envvar_prefix": "MCP"})
@@ -138,6 +186,19 @@ def read_resource(ctx: click.Context, uri: str) -> None:
 def list_tools(ctx: click.Context) -> None:
     server: RailsMCPServer = ctx.obj["server"]
     click.echo(_json_dump(server.list_tools()))
+
+
+@cli.command("search-schema")
+@click.option("--keyword", required=True, help="Keyword to match table or column names")
+@click.option("--limit", type=int, default=10, show_default=True)
+@click.pass_context
+def search_schema(ctx: click.Context, keyword: str, limit: int) -> None:
+    server: RailsMCPServer = ctx.obj["server"]
+    try:
+        result = server.search_schema(keyword, limit)
+    except ValidationError as exc:
+        _emit_error(exc.to_payload())
+    click.echo(_json_dump(result))
 
 
 @cli.command("fetch-records")
@@ -248,21 +309,24 @@ async def _run_mcp_server(app_server: RailsMCPServer) -> None:
 
     @mcp_server.list_tools()
     async def _list_tools() -> list[mcp_types.Tool]:
-        tool = mcp_types.Tool(
-            name="fetch_records",
-            description="Fetch records using indexed columns only",
-            inputSchema=FETCH_RECORDS_INPUT_SCHEMA,
-        )
-        return [tool]
+        return [
+            mcp_types.Tool(
+                name="fetch_records",
+                description="Fetch records using indexed columns only",
+                inputSchema=FETCH_RECORDS_INPUT_SCHEMA,
+            ),
+            mcp_types.Tool(
+                name="search_schema",
+                description="Search schema tables/columns by keyword",
+                inputSchema=SEARCH_SCHEMA_INPUT_SCHEMA,
+            ),
+        ]
 
     @mcp_server.call_tool()
     async def _call_tool(name: str, arguments: dict[str, Any] | None) -> Dict[str, Any]:
-        if name != "fetch_records":
-            raise ValueError(f"Unknown tool '{name}'")
-
         payload = arguments or {}
 
-        def _invoke() -> Dict[str, Any]:
+        def fetch_wrapper() -> Dict[str, Any]:
             try:
                 return app_server.fetch_records(payload)
             except ValidationError as exc:
@@ -272,7 +336,27 @@ async def _run_mcp_server(app_server: RailsMCPServer) -> None:
             except QueryExecutionError as exc:
                 raise ValueError(str(exc))
 
-        result = await anyio.to_thread.run_sync(_invoke)
+        def search_wrapper() -> Dict[str, Any]:
+            try:
+                keyword = payload.get("keyword")
+                if not isinstance(keyword, str):
+                    raise ValidationError("invalid_keyword", "'keyword' must be a string")
+                limit_value = payload.get("limit", 10)
+                try:
+                    limit_int = int(limit_value)
+                except (TypeError, ValueError):
+                    raise ValidationError("invalid_limit", "'limit' must be an integer")
+                return app_server.search_schema(keyword, limit_int)
+            except ValidationError as exc:
+                raise ValueError(json.dumps(exc.to_payload()))
+
+        if name == "fetch_records":
+            result = await anyio.to_thread.run_sync(fetch_wrapper)
+        elif name == "search_schema":
+            result = await anyio.to_thread.run_sync(search_wrapper)
+        else:
+            raise ValueError(f"Unknown tool '{name}'")
+
         return _make_json_safe(result)
 
     init_options = mcp_server.create_initialization_options(NotificationOptions())
