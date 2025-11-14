@@ -70,6 +70,19 @@ is your Python interpreter, the arguments are the `-m rails_mcp_server.server ..
 pieces). Once added, you can ask Claude natural questions (“Find user with email …”) and
 it will invoke the `fetch_records` and `search_schema` tools over MCP.
 
+## Terminal Assistant (server-side)
+
+For headless environments (e.g., staging EC2) you can use the bundled assistant script:
+
+```
+./assist_me
+```
+
+The script bootstraps a virtualenv, prompts you to fill out `env.sh` with schema/config/DB/Claude
+settings, and launches the REPL that talks to Anthropic’s API. Once `env.sh` contains real values
+and the venv is created, anyone with SSM access can simply run `assist_me` to start a natural-language
+session entirely on the server.
+
 ## Testing
 Run the full suite once dependencies are installed:
 ```bash
