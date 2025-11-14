@@ -12,6 +12,7 @@ class SchemaParser:
 
     _CREATE_TABLE_RE = re.compile(r'create_table\s+"(?P<table>[^"]+)"(?P<options>.*) do \|(?P<var>\w+)\|')
     _ADD_INDEX_RE = re.compile(r'add_index\s+"(?P<table>[^"]+)",\s*(?P<columns>\[[^\]]+\]|:[\w_]+|"[^"]+")(?P<rest>.*)')
+    _ADD_FOREIGN_KEY_RE = re.compile(r'add_foreign_key\s+"(?P<from>[^"]+)",\s+"(?P<to>[^"]+)"(?P<rest>.*)')
     _INLINE_INDEX_RE = re.compile(r'\.(?:index)\s+(?P<columns>\[[^\]]+\]|:[\w_]+|"[^"]+")(?P<rest>.*)')
 
     def __init__(self, schema_path: Path) -> None:
@@ -38,6 +39,8 @@ class SchemaParser:
             stripped = line.strip()
             if stripped.startswith('add_index'):
                 self._apply_add_index_line(stripped, tables)
+            elif stripped.startswith('add_foreign_key'):
+                self._apply_add_foreign_key_line(stripped, tables)
         return tables
 
     def _collect_block(self, lines: List[str], start: int) -> tuple[List[str], int]:
@@ -89,6 +92,7 @@ class SchemaParser:
             'columns': columns,
             'indexes': indexes,
             'primary_key': primary_key,
+            'foreign_keys': [],
         }
 
     def _extract_primary_key(self, options: str) -> str | None:
@@ -133,6 +137,26 @@ class SchemaParser:
         name = name_match.group('name') if name_match else self._default_index_name(table, columns)
         table_entry = tables.setdefault(table, {'columns': [], 'indexes': {}, 'primary_key': None})
         table_entry['indexes'][name] = columns
+
+    def _apply_add_foreign_key_line(self, line: str, tables: Dict[str, Dict[str, Any]]) -> None:
+        match = self._ADD_FOREIGN_KEY_RE.match(line)
+        if not match:
+            return
+        from_table = match.group('from')
+        to_table = match.group('to')
+        rest = match.group('rest') or ''
+        name_match = re.search(r'name:\s*"(?P<name>[^"]+)"', rest)
+        column_match = re.search(r'column:\s*"(?P<column>[^"]+)"', rest)
+        pk_match = re.search(r'primary_key:\s*"(?P<pk>[^"]+)"', rest)
+
+        entry = {
+            'to_table': to_table,
+            'column': column_match.group('column') if column_match else None,
+            'primary_key': pk_match.group('pk') if pk_match else 'id',
+            'name': name_match.group('name') if name_match else None,
+        }
+        table_entry = tables.setdefault(from_table, {'columns': [], 'indexes': {}, 'primary_key': 'id', 'foreign_keys': []})
+        table_entry.setdefault('foreign_keys', []).append(entry)
 
     def _parse_columns(self, raw: str) -> List[str]:
         raw = raw.strip()

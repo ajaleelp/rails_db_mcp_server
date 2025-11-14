@@ -26,4 +26,6 @@ ActiveRecord::Schema[7.1].define(version: 2024_01_01_000000) do
   end
 
   add_index "api_keys", ["user_id"], name: "index_api_keys_on_user_id"
+  add_foreign_key "events", "users"
+  add_foreign_key "api_keys", "users", column: "user_id", name: "fk_api_keys_users"
 end

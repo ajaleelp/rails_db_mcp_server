@@ -19,6 +19,11 @@ def test_parses_columns_and_indexes_from_schema_rails_7() -> None:
     assert api_keys["primary_key"] == "token"
     assert api_keys["indexes"]["PRIMARY"] == ["token"]
     assert api_keys["indexes"]["index_api_keys_on_user_id"] == ["user_id"]
+    events_fk = parser.tables["events"]["foreign_keys"]
+    assert events_fk[0]["to_table"] == "users"
+    api_fk = parser.tables["api_keys"]["foreign_keys"][0]
+    assert api_fk["column"] == "user_id"
+    assert api_fk["name"] == "fk_api_keys_users"
 
 
 def test_handles_timestamps_and_id_false_tables() -> None:

@@ -33,6 +33,7 @@ def test_search_schema_matches_table_and_columns() -> None:
 
     column_result = server.search_schema("email")
     assert any("email" in match["matching_columns"] or "email" in match["all_columns"] for match in column_result["matches"])
+    assert "foreign_keys" in column_result["matches"][0]
 
 
 def test_search_schema_requires_keyword() -> None:

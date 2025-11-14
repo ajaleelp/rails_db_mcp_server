@@ -34,6 +34,7 @@ Example invocations:
 - Display schema metadata: `rails-mcp-server ... read-resource --uri schema://database`
 - View available tools: `rails-mcp-server ... list-tools`
 - Search schema tables/columns: `rails-mcp-server ... search-schema --keyword sleep`
+  (results include columns, indexes, and foreign keys)
 - Fetch rows (filters as JSON):
   ```bash
   rails-mcp-server \

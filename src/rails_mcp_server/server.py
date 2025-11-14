@@ -135,6 +135,7 @@ class RailsMCPServer:
                     "all_columns": metadata["columns"],
                     "indexes": metadata["indexes"],
                     "primary_key": metadata["primary_key"],
+                    "foreign_keys": metadata.get("foreign_keys", []),
                 }
             )
 
