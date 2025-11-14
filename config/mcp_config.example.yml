@@ -1,0 +1,32 @@
+sensitive_fields:
+  users: [encrypted_password, password_digest, ssn, phone]
+  payments: [credit_card_number, cvv, bank_account]
+
+sensitive_patterns:
+  - "*password*"
+  - "*token*"
+  - "*secret*"
+  - "*api_key*"
+  - "ssn"
+  - "*credit_card*"
+
+masking_rules:
+  email: partial
+  "*password*": redact
+  "*token*": redact
+  ssn: redact
+  "*credit_card*": redact
+
+return_columns:
+  users: [id, email, name, created_at, updated_at]
+
+excluded_tables:
+  - schema_migrations
+  - ar_internal_metadata
+  - active_storage_blobs
+
+default_limit: 10
+max_limit: 100
+
+rate_limit:
+  requests_per_minute: 30

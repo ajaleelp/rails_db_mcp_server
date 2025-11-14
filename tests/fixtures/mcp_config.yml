@@ -1,0 +1,14 @@
+sensitive_fields:
+  users: [email, phone]
+sensitive_patterns:
+  - "*credit_card*"
+masking_rules:
+  email: partial
+return_columns:
+  users: [id, email]
+excluded_tables:
+  - audit_logs
+default_limit: 25
+max_limit: 50
+rate_limit:
+  requests_per_minute: 10
