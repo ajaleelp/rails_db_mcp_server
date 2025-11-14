@@ -19,6 +19,8 @@ dependencies = [
   "pydantic>=2.7",
   "click>=8.1",
   "typing-extensions>=4.12",
+  "anyio>=4.0",
+  "mcp>=1.21.1",
 ]
 
 [project.optional-dependencies]

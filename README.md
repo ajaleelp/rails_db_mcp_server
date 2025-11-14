@@ -53,6 +53,22 @@ See `config/mcp_config.example.yml` for supported keys:
 - `excluded_tables`, `default_limit`, `max_limit`, and `rate_limit`
 The CLI defaults to `<schema_dir>/mcp_config.yml` when `--config-path` is not supplied.
 
+## MCP (Claude Desktop) Integration
+Start the stdio server instead of the ad-hoc CLI commands:
+
+```
+rails-mcp-server \
+  --schema-path /path/to/db/schema.rb \
+  --config-path /path/to/mcp_config.yml \
+  --database-url mysql+pymysql://user:pass@host:3306/dbname \
+  serve
+```
+
+In Claude Desktop, add a custom connector that runs the same command (the executable
+is your Python interpreter, the arguments are the `-m rails_mcp_server.server ... serve`
+pieces). Once added, you can ask Claude natural questions (“Find user with email …”) and
+it will invoke the `fetch_records` tool over MCP.
+
 ## Testing
 Run the full suite once dependencies are installed:
 ```bash

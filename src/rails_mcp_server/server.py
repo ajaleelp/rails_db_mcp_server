@@ -9,8 +9,14 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import anyio
 import click
+from mcp.server import NotificationOptions, Server as MCPServer
+from mcp.server.lowlevel.helper_types import ReadResourceContents
+from mcp.server.stdio import stdio_server
+import mcp.types as mcp_types
 
+from . import __version__
 from .config_loader import ConfigLoader, MCPConfig
 from .data_masker import DataMasker
 from .query_builder import build_query
@@ -164,6 +170,14 @@ def fetch_records(
         _emit_error({"error": "invalid_request", "message": str(exc)})
 
 
+@cli.command("serve")
+@click.pass_context
+def serve(ctx: click.Context) -> None:
+    """Start an MCP stdio server for integrations like Claude Desktop."""
+    server: RailsMCPServer = ctx.obj["server"]
+    anyio.run(_run_mcp_server, server)
+
+
 def _emit_error(payload: Dict[str, Any]) -> None:
     click.echo(_json_dump(payload), err=True)
     raise SystemExit(1)
@@ -211,6 +225,61 @@ def _build_components(schema_path: Path, config_path: Path, database_url: str) -
     )
 
 
+async def _run_mcp_server(app_server: RailsMCPServer) -> None:
+    mcp_server = MCPServer(name="rails-db", version=__version__)
+    components = app_server.components
+
+    @mcp_server.list_resources()
+    async def _list_resources() -> list[mcp_types.Resource]:
+        resource = mcp_types.Resource(
+            uri="schema://database",
+            name="Database Schema",
+            description="Rails schema with indexed columns",
+            mimeType="application/json",
+        )
+        return [resource]
+
+    @mcp_server.read_resource()
+    async def _read_resource(uri: mcp_types.AnyUrl):
+        if str(uri) != "schema://database":
+            raise ValueError(f"Unknown resource '{uri}'")
+        schema_json = components.schema_parser.format_for_display()
+        return [ReadResourceContents(content=schema_json, mime_type="application/json")]
+
+    @mcp_server.list_tools()
+    async def _list_tools() -> list[mcp_types.Tool]:
+        tool = mcp_types.Tool(
+            name="fetch_records",
+            description="Fetch records using indexed columns only",
+            inputSchema=FETCH_RECORDS_INPUT_SCHEMA,
+        )
+        return [tool]
+
+    @mcp_server.call_tool()
+    async def _call_tool(name: str, arguments: dict[str, Any] | None) -> Dict[str, Any]:
+        if name != "fetch_records":
+            raise ValueError(f"Unknown tool '{name}'")
+
+        payload = arguments or {}
+
+        def _invoke() -> Dict[str, Any]:
+            try:
+                return app_server.fetch_records(payload)
+            except ValidationError as exc:
+                raise ValueError(json.dumps(exc.to_payload()))
+            except RateLimitExceeded as exc:
+                raise ValueError(str(exc))
+            except QueryExecutionError as exc:
+                raise ValueError(str(exc))
+
+        result = await anyio.to_thread.run_sync(_invoke)
+        return _make_json_safe(result)
+
+    init_options = mcp_server.create_initialization_options(NotificationOptions())
+    async with stdio_server() as (read_stream, write_stream):
+        await mcp_server.run(read_stream, write_stream, init_options)
+
+
 def _json_dump(payload: Any) -> str:
     return json.dumps(payload, indent=2, default=_json_default)
 
@@ -221,6 +290,20 @@ def _json_default(value: Any) -> Any:
     if isinstance(value, Decimal):
         return str(value)
     return str(value)
+
+
+def _make_json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _make_json_safe(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [_make_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_make_json_safe(item) for item in value]
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    return value
 
 
 main = cli
