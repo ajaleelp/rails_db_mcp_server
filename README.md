@@ -90,3 +90,24 @@ Run the full suite once dependencies are installed:
 python -m pytest
 ```
 Tests cover schema parsing, config loading, query validation/building, masking, rate limiting, and an end-to-end fetch flow backed by SQLite.
+
+## How it was built
+
+This was vibe-coded in Python with Claude as the primary author and me reviewing
+and steering each step. The architecture, security boundaries (composite-index
+validation, indexed `ORDER BY` enforcement, PII masking rules, per-table column
+allowlists), MCP-spec compliance choices, and the test surface were mine; most of
+the line-level code came out of an agent under my detailed oversight.
+
+I am calling that out explicitly because the project is itself in service of that
+exact workflow: building tools that make AI-assisted code reviewable and
+trustworthy in production.
+
+## Status
+
+Working, in use, not in active development. Shipped to the point where it does
+its job, then day-job priorities took over. Issues and PRs welcome.
+
+## License
+
+MIT.
